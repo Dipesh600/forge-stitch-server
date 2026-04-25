@@ -90,34 +90,63 @@ function parseScreen(text, projectId) {
   if (!text) return { error: "empty Stitch response", projectId };
   try {
     const data = JSON.parse(text);
+
+    // Helper to extract screenshot URL from a screen object — Stitch changes this path
+    function extractScreenshotUrl(s) {
+      return s.screenshot?.downloadUrl
+        || s.screenshot?.url
+        || s.renderedScreenshot
+        || s.previewImageUrl
+        || s.screenshotUrl
+        || s.imageUrl
+        || null;
+    }
+
+    function extractHtmlUrl(s) {
+      return s.htmlCode?.downloadUrl
+        || s.htmlCode?.url
+        || s.htmlUrl
+        || s.codeUrl
+        || null;
+    }
+
     // Format: outputComponents[].design.screens[0]
     if (Array.isArray(data.outputComponents)) {
       for (const comp of data.outputComponents) {
         const screens = comp?.design?.screens;
         if (screens?.length) {
           const s = screens[0];
+          const screenshotUrl = extractScreenshotUrl(s);
+          const htmlUrl = extractHtmlUrl(s);
+          console.log(`[FORGE] screen parsed: id=${s.id}, screenshot=${screenshotUrl ? "✓" : "NULL"}, html=${htmlUrl ? "✓" : "NULL"}`);
+          // Log full screen object if both are null so we can diagnose
+          if (!screenshotUrl && !htmlUrl) {
+            console.log("[FORGE] screen keys:", JSON.stringify(Object.keys(s)));
+          }
           return {
             screenId: s.id || s.screenId,
             projectId,
-            htmlUrl: s.htmlCode?.downloadUrl || null,
-            screenshotUrl: s.screenshot?.downloadUrl || null,
-            description: s.title || null,
+            htmlUrl,
+            screenshotUrl,
+            description: s.title || s.name || null,
             error: null,
           };
         }
       }
     }
+
     // Fallback: direct fields
+    const htmlUrl = data.htmlUrl || data.htmlCode?.downloadUrl || null;
+    const screenshotUrl = data.screenshotUrl || data.screenshot?.downloadUrl || null;
     return {
       screenId: data.id || data.screenId || `sc_${Date.now()}`,
       projectId: data.projectId || projectId,
-      htmlUrl: data.htmlUrl || data.htmlCode?.downloadUrl || null,
-      screenshotUrl: data.screenshotUrl || data.screenshot?.downloadUrl || null,
+      htmlUrl, screenshotUrl,
       description: data.title || null,
-      error: null,
+      error: (htmlUrl || screenshotUrl) ? null : `no URLs found. Keys: ${Object.keys(data).join(",")}`,
     };
-  } catch {
-    return { error: `parse failed: ${text.slice(0, 100)}`, projectId };
+  } catch (e) {
+    return { error: `parse failed: ${e.message}: ${text.slice(0, 100)}`, projectId };
   }
 }
 
